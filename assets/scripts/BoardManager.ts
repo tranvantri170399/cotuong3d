@@ -15,11 +15,19 @@ import {
     find,
     Node,
     Label,
-    LabelOutline,
     UITransform,
     Color,
     HorizontalTextAlignment,
-    VerticalTextAlignment
+    VerticalTextAlignment,
+    Canvas,
+    view,
+    Overflow,
+    Layers,
+    resources,
+    Texture2D,
+    MeshRenderer,
+    Sprite,
+    SpriteFrame
 } from 'cc';
 
 import { OCo } from './Tile';
@@ -64,6 +72,9 @@ export class QuanLyBanCo extends Component {
     private vanDaKetThuc = false;
     private nhanTrangThai: Label | null = null;
     private mayDangDi = false;
+    private nodeCanvas: Node | null = null;
+    private cameraCanvas: Camera | null = null;
+    private cacLabelQuanCo: Map<QuanCo, Label> = new Map();
 
     private readonly soHang = 10;
     private readonly soCot = 9;
@@ -74,24 +85,178 @@ export class QuanLyBanCo extends Component {
 
     start() {
         this.timCameraChinhNeuCan();
+        this.taoCanvasUI();
         this.taoGiaoDienTrangThai();
         this.taoBanCo();
         this.taoCacQuanCoBanDau();
         this.inLuotHienTai();
+        this.taiVaApDungTextureBanCo();
         input.on(Input.EventType.MOUSE_DOWN, this.khiBamChuot, this);
         input.on(Input.EventType.KEY_DOWN, this.khiBamPhim, this);
+    }
+
+    update(deltaTime: number) {
+        this.capNhatViTriLabelQuanCo();
     }
 
     onDestroy() {
         input.off(Input.EventType.MOUSE_DOWN, this.khiBamChuot, this);
         input.off(Input.EventType.KEY_DOWN, this.khiBamPhim, this);
+        this.xoaTatCaLabelQuanCo();
+
+        if (this.nodeCanvas && this.nodeCanvas.isValid) {
+            this.nodeCanvas.destroy();
+        }
+
+        this.nodeCanvas = null;
+        this.cameraCanvas = null;
+    }
+
+    private taiVaApDungTextureBanCo() {
+        // Ẩn bảng 3D Plane cũ
+        const nodeBanCo = this.node.getChildByName('ChessBoard');
+        if (nodeBanCo) {
+            nodeBanCo.active = false;
+        }
+
+        // Tạo Node mới chứa ảnh 2D Sprite
+        const nodeSpriteBanCo = new Node('SpriteBanCo');
+        
+        // Thêm component UITransform để gán kích thước
+        const transform = nodeSpriteBanCo.addComponent(UITransform);
+        // Thiết lập kích thước đủ bao trọn lưới toạ độ (lưới khoảng 9.6 x 10.8)
+        transform.setContentSize(10.6, 11.6);
+        
+        // Thêm component Sprite
+        const sprite = nodeSpriteBanCo.addComponent(Sprite);
+        
+        // Đặt mặt phẳng song song với sàn (xoay -90 độ trục X)
+        nodeSpriteBanCo.setRotationFromEuler(-90, 0, 0);
+        // Hạ xuống một chút (-0.01) để không đè lên phần highlight của các ô cờ
+        nodeSpriteBanCo.setPosition(new Vec3(0, -0.01, 0));
+        
+        this.node.addChild(nodeSpriteBanCo);
+
+        // Load ảnh dưới dạng SpriteFrame
+        resources.load('board/spriteFrame', SpriteFrame, (err, spriteFrame) => {
+            if (err) {
+                console.error('Loi khi load sprite ban co:', err);
+                return;
+            }
+            
+            sprite.spriteFrame = spriteFrame;
+        });
     }
 
     private timCameraChinhNeuCan() {
-        if (this.cameraChinh) return;
+        if (this.cameraChinh) {
+            this.datGocNhinQuanDo();
+            return;
+        }
 
         const nodeCamera = find('Main Camera');
         this.cameraChinh = nodeCamera?.getComponent(Camera) ?? null;
+        this.datGocNhinQuanDo();
+    }
+
+    private datGocNhinQuanDo() {
+        if (!this.cameraChinh) return;
+
+        this.cameraChinh.node.setPosition(new Vec3(0, 15, -15));
+        this.cameraChinh.node.lookAt(new Vec3(0, 0, 0));
+    }
+
+    private taoCanvasUI() {
+        this.nodeCanvas = new Node('CanvasQuanCo');
+        this.nodeCanvas.layer = Layers.Enum.UI_2D;
+
+        const nodeCameraCanvas = new Node('CameraCanvasQuanCo');
+        nodeCameraCanvas.layer = Layers.Enum.UI_2D;
+        this.nodeCanvas.addChild(nodeCameraCanvas);
+
+        this.cameraCanvas = nodeCameraCanvas.addComponent(Camera);
+        this.cameraCanvas.projection = Camera.ProjectionType.ORTHO;
+        this.cameraCanvas.visibility = Layers.Enum.UI_2D;
+        this.cameraCanvas.clearFlags = Camera.ClearFlag.DEPTH_ONLY;
+        this.cameraCanvas.priority = (this.cameraChinh?.priority ?? 0) + 1;
+
+        const kichThuocManHinh = view.getVisibleSize();
+        const bienDangCanvas = this.nodeCanvas.addComponent(UITransform);
+        bienDangCanvas.setContentSize(kichThuocManHinh.width, kichThuocManHinh.height);
+
+        const canvas = this.nodeCanvas.addComponent(Canvas);
+        canvas.cameraComponent = this.cameraCanvas;
+        canvas.alignCanvasWithScreen = true;
+        this.nodeCanvas.setPosition(new Vec3(kichThuocManHinh.width / 2, kichThuocManHinh.height / 2, 0));
+        this.node.scene?.addChild(this.nodeCanvas);
+    }
+
+    private capNhatViTriLabelQuanCo() {
+        if (!this.cameraChinh || !this.nodeCanvas) return;
+
+        for (const quanCo of this.danhSachQuanCo) {
+            if (!quanCo.node || !quanCo.node.isValid) continue;
+
+            let label = this.cacLabelQuanCo.get(quanCo);
+            if (!label) {
+                label = this.taoLabelChoQuan(quanCo);
+                this.cacLabelQuanCo.set(quanCo, label);
+            }
+
+            const viTriTheGioi = quanCo.node.worldPosition.clone();
+            viTriTheGioi.y += 0.6;
+
+            const viTriManHinh = this.cameraChinh.convertToUINode(viTriTheGioi, this.nodeCanvas);
+            if (viTriManHinh) {
+                label.node.setPosition(viTriManHinh);
+            }
+        }
+    }
+
+    private taoLabelChoQuan(quanCo: QuanCo): Label {
+        const nodeLabel = new Node('LabelQuanCo');
+        nodeLabel.layer = Layers.Enum.UI_2D;
+        this.nodeCanvas!.addChild(nodeLabel);
+
+        const bienDang = nodeLabel.addComponent(UITransform);
+        bienDang.setContentSize(120, 60);
+
+        const label = nodeLabel.addComponent(Label);
+        label.fontSize = 32;
+        label.lineHeight = 36;
+        label.horizontalAlign = HorizontalTextAlignment.CENTER;
+        label.verticalAlign = VerticalTextAlignment.CENTER;
+        label.overflow = Overflow.SHRINK;
+        label.enableWrapText = false;
+        label.isBold = true;
+        label.color = new Color(255, 255, 255, 255);
+        label.outlineColor = new Color(0, 0, 0, 255);
+        label.outlineWidth = 2;
+
+        label.string = this.layTenQuanCoLabel(quanCo);
+
+        return label;
+    }
+
+    private layTenQuanCoLabel(quanCo: QuanCo): string {
+        switch (quanCo.loaiQuan) {
+            case LoaiQuan.TUONG_SOAI:
+                return quanCo.laQuanDo ? 'TƯỚNG' : 'SOÁI';
+            case LoaiQuan.SI:
+                return 'SĨ';
+            case LoaiQuan.TUONG_VOI:
+                return 'TƯỢNG';
+            case LoaiQuan.XE:
+                return 'XE';
+            case LoaiQuan.MA:
+                return 'MÃ';
+            case LoaiQuan.PHAO:
+                return 'PHÁO';
+            case LoaiQuan.TOT:
+                return quanCo.laQuanDo ? 'TỐT' : 'BINH';
+            default:
+                return '?';
+        }
     }
 
     private taoBanCo() {
@@ -278,6 +443,7 @@ export class QuanLyBanCo extends Component {
         if (!oCoBiAn) return;
 
         console.log(`${this.layTenQuanCo(this.quanDangChon!)} an ${this.layTenQuanCo(quanBiAn)}`);
+        this.xoaLabelQuanCo(quanBiAn);
         quanBiAn.node.destroy();
         this.diChuyenQuanDangChonDen(oCoBiAn);
     }
@@ -356,6 +522,7 @@ export class QuanLyBanCo extends Component {
         }
 
         this.danhSachQuanCo = [];
+        this.xoaTatCaLabelQuanCo();
 
         for (let hang = 0; hang < this.soHang; hang++) {
             for (let cot = 0; cot < this.soCot; cot++) {
@@ -392,10 +559,8 @@ export class QuanLyBanCo extends Component {
         this.nhanTrangThai.verticalAlign = VerticalTextAlignment.CENTER;
         this.nhanTrangThai.color = new Color(255, 245, 180, 255);
         this.nhanTrangThai.isBold = true;
-
-        const vienChu = nodeTrangThai.addComponent(LabelOutline);
-        vienChu.color = new Color(0, 0, 0, 255);
-        vienChu.width = 3;
+        this.nhanTrangThai.outlineColor = new Color(0, 0, 0, 255);
+        this.nhanTrangThai.outlineWidth = 3;
     }
 
     private capNhatTrangThai(noiDung: string) {
@@ -444,6 +609,7 @@ export class QuanLyBanCo extends Component {
 
         if (nuocDi.quanBiAn) {
             console.log(`${this.layTenQuanCo(nuocDi.quanCo)} an ${this.layTenQuanCo(nuocDi.quanBiAn)}`);
+            this.xoaLabelQuanCo(nuocDi.quanBiAn);
             nuocDi.quanBiAn.node.destroy();
         }
 
@@ -493,6 +659,25 @@ export class QuanLyBanCo extends Component {
         }
 
         this.cacONuocDiHopLe = [];
+    }
+
+    private xoaLabelQuanCo(quanCo: QuanCo) {
+        const label = this.cacLabelQuanCo.get(quanCo);
+
+        if (label) {
+            label.node.destroy();
+            this.cacLabelQuanCo.delete(quanCo);
+        }
+    }
+
+    private xoaTatCaLabelQuanCo() {
+        for (const label of this.cacLabelQuanCo.values()) {
+            if (label.node && label.node.isValid) {
+                label.node.destroy();
+            }
+        }
+
+        this.cacLabelQuanCo.clear();
     }
 
     private chonOCo(oCo: OCo) {

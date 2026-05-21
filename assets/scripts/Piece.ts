@@ -5,14 +5,7 @@ import {
     MeshRenderer,
     Color,
     Material,
-    Enum,
-    Node,
-    Label,
-    LabelOutline,
-    UITransform,
-    HorizontalTextAlignment,
-    VerticalTextAlignment,
-    Overflow
+    Enum
 } from 'cc';
 
 const { ccclass, property } = _decorator;
@@ -46,11 +39,9 @@ export class QuanCo extends Component {
     private readonly mauDangChon = new Color(255, 220, 0, 255);
     private readonly mauQuanDo = new Color(210, 35, 35, 255);
     private readonly mauQuanDen = new Color(35, 35, 35, 255);
-    private chuQuanCo: Label | null = null;
 
     onLoad() {
         this.luuVatLieu();
-        this.taoChuTrenQuan();
         this.boChon();
     }
 
@@ -60,7 +51,6 @@ export class QuanCo extends Component {
         this.loaiQuan = loaiQuan;
         this.laQuanDo = laQuanDo;
         this.boChon();
-        this.capNhatChuQuanCo();
     }
 
     public chon() {
@@ -92,60 +82,6 @@ export class QuanCo extends Component {
 
         if (this.vatLieu) {
             this.vatLieu.setProperty('mainColor', mau);
-        }
-    }
-
-    private taoChuTrenQuan() {
-        const nodeChu = new Node('ChuQuanCo');
-        nodeChu.setPosition(new Vec3(0, 0.72, 0));
-        nodeChu.setRotationFromEuler(-90, 0, 0);
-        nodeChu.setScale(new Vec3(0.01, 0.01, 0.01));
-        this.node.addChild(nodeChu);
-
-        const bienDangChu = nodeChu.addComponent(UITransform);
-        bienDangChu.setContentSize(140, 70);
-
-        this.chuQuanCo = nodeChu.addComponent(Label);
-        this.chuQuanCo.fontSize = 36;
-        this.chuQuanCo.lineHeight = 40;
-        this.chuQuanCo.horizontalAlign = HorizontalTextAlignment.CENTER;
-        this.chuQuanCo.verticalAlign = VerticalTextAlignment.CENTER;
-        this.chuQuanCo.overflow = Overflow.SHRINK;
-        this.chuQuanCo.enableWrapText = false;
-        this.chuQuanCo.isBold = true;
-        this.chuQuanCo.color = new Color(255, 255, 255, 255);
-
-        const vienChu = nodeChu.addComponent(LabelOutline);
-        vienChu.color = new Color(0, 0, 0, 255);
-        vienChu.width = 2;
-
-        this.capNhatChuQuanCo();
-    }
-
-    private capNhatChuQuanCo() {
-        if (!this.chuQuanCo) return;
-
-        this.chuQuanCo.string = this.layChuQuanCo();
-    }
-
-    private layChuQuanCo(): string {
-        switch (this.loaiQuan) {
-            case LoaiQuan.TUONG_SOAI:
-                return 'TUONG';
-            case LoaiQuan.SI:
-                return 'SI';
-            case LoaiQuan.TUONG_VOI:
-                return 'VOI';
-            case LoaiQuan.XE:
-                return 'XE';
-            case LoaiQuan.MA:
-                return 'MA';
-            case LoaiQuan.PHAO:
-                return 'PHAO';
-            case LoaiQuan.TOT:
-                return 'TOT';
-            default:
-                return '?';
         }
     }
 }
