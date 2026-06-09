@@ -2,7 +2,6 @@ import {
     _decorator,
     Component,
     Prefab,
-    instantiate,
     Vec3,
     Camera,
     input,
@@ -10,8 +9,6 @@ import {
     EventMouse,
     EventKeyboard,
     KeyCode,
-    PhysicsSystem,
-    geometry,
     find,
     Node,
     Label,
@@ -23,16 +20,15 @@ import {
     view,
     Overflow,
     Layers,
-    resources,
-    Texture2D,
-    MeshRenderer,
+    Graphics,
     Sprite,
-    SpriteFrame
+    SpriteFrame,
+    Texture2D,
+    resources
 } from 'cc';
 
-import { OCo } from './Tile';
 import { QuanCo, LoaiQuan } from './Piece';
-import { KiemTraNuocDi, BanCoQuan } from './MoveValidator';
+import { KiemTraNuocDi, BanCoQuan, ViTriBanCo } from './MoveValidator';
 
 const { ccclass, property } = _decorator;
 
@@ -63,9 +59,7 @@ export class QuanLyBanCo extends Component {
     cameraChinh: Camera | null = null;
 
     private quanDangChon: QuanCo | null = null;
-    private oDangChon: OCo | null = null;
-    private cacONuocDiHopLe: OCo[] = [];
-    private danhSachOCo: OCo[][] = [];
+    private cacONuocDiHopLe: ViTriBanCo[] = [];
     private banCoQuan: BanCoQuan = [];
     private danhSachQuanCo: QuanCo[] = [];
     private luotQuanDo = true;
@@ -74,35 +68,42 @@ export class QuanLyBanCo extends Component {
     private mayDangDi = false;
     private nodeCanvas: Node | null = null;
     private cameraCanvas: Camera | null = null;
-    private cacLabelQuanCo: Map<QuanCo, Label> = new Map();
+    private nodeBanCo2D: Node | null = null;
+    private veBanCo2D: Graphics | null = null;
+    private veHighlight2D: Graphics | null = null;
+    private nodeQuanCo2D: Node | null = null;
+    private cacNodeQuanCo: Map<QuanCo, Node> = new Map();
+    private hangOCoDangChon: number | null = null;
+    private cotOCoDangChon: number | null = null;
 
     private readonly soHang = 10;
     private readonly soCot = 9;
-    private readonly khoangCachO = 1.2;
-    private readonly doCaoQuanCo = 0.55;
+    private readonly canhOCo = 90;
+    private readonly leBanCo = 44;
+    private readonly tiLePhongNgangBanCo = 1.14;
     private readonly choiVoiMay = true;
     private readonly mayLaQuanDo = false;
+    private readonly dungAnhBanCo = true;
 
     start() {
+        this.anCacNode3DCu();
         this.timCameraChinhNeuCan();
-        this.taoCanvasUI();
-        this.taoGiaoDienTrangThai();
+        this.taoGiaoDien2D();
         this.taoBanCo();
         this.taoCacQuanCoBanDau();
+        this.veLaiBanCo();
         this.inLuotHienTai();
-        this.taiVaApDungTextureBanCo();
         input.on(Input.EventType.MOUSE_DOWN, this.khiBamChuot, this);
         input.on(Input.EventType.KEY_DOWN, this.khiBamPhim, this);
-    }
-
-    update(deltaTime: number) {
-        this.capNhatViTriLabelQuanCo();
     }
 
     onDestroy() {
         input.off(Input.EventType.MOUSE_DOWN, this.khiBamChuot, this);
         input.off(Input.EventType.KEY_DOWN, this.khiBamPhim, this);
-        this.xoaTatCaLabelQuanCo();
+
+        if (this.nodeCanvas && this.nodeCanvas.isValid) {
+            this.nodeCanvas.off(Node.EventType.MOUSE_DOWN, this.khiBamChuot, this);
+        }
 
         if (this.nodeCanvas && this.nodeCanvas.isValid) {
             this.nodeCanvas.destroy();
@@ -110,194 +111,151 @@ export class QuanLyBanCo extends Component {
 
         this.nodeCanvas = null;
         this.cameraCanvas = null;
+        this.nodeBanCo2D = null;
+        this.veBanCo2D = null;
+        this.veHighlight2D = null;
+        this.nodeQuanCo2D = null;
+        this.cacNodeQuanCo.clear();
     }
 
-    private taiVaApDungTextureBanCo() {
-        // Ẩn bảng 3D Plane cũ
-        const nodeBanCo = this.node.getChildByName('ChessBoard');
-        if (nodeBanCo) {
-            nodeBanCo.active = false;
+    private anCacNode3DCu() {
+        for (const nodeCon of this.node.children) {
+            nodeCon.active = false;
         }
-
-        // Tạo Node mới chứa ảnh 2D Sprite
-        const nodeSpriteBanCo = new Node('SpriteBanCo');
-        
-        // Thêm component UITransform để gán kích thước
-        const transform = nodeSpriteBanCo.addComponent(UITransform);
-        // Thiết lập kích thước đủ bao trọn lưới toạ độ (lưới khoảng 9.6 x 10.8)
-        transform.setContentSize(10.6, 11.6);
-        
-        // Thêm component Sprite
-        const sprite = nodeSpriteBanCo.addComponent(Sprite);
-        
-        // Đặt mặt phẳng song song với sàn (xoay -90 độ trục X)
-        nodeSpriteBanCo.setRotationFromEuler(-90, 0, 0);
-        // Hạ xuống một chút (-0.01) để không đè lên phần highlight của các ô cờ
-        nodeSpriteBanCo.setPosition(new Vec3(0, -0.01, 0));
-        
-        this.node.addChild(nodeSpriteBanCo);
-
-        // Load ảnh dưới dạng SpriteFrame
-        resources.load('board/spriteFrame', SpriteFrame, (err, spriteFrame) => {
-            if (err) {
-                console.error('Loi khi load sprite ban co:', err);
-                return;
-            }
-            
-            sprite.spriteFrame = spriteFrame;
-        });
     }
 
     private timCameraChinhNeuCan() {
-        if (this.cameraChinh) {
-            this.datGocNhinQuanDo();
-            return;
+        if (!this.cameraChinh) {
+            const nodeCamera = find('Main Camera');
+            this.cameraChinh = nodeCamera?.getComponent(Camera) ?? null;
         }
 
-        const nodeCamera = find('Main Camera');
-        this.cameraChinh = nodeCamera?.getComponent(Camera) ?? null;
-        this.datGocNhinQuanDo();
+        if (this.cameraChinh) {
+            this.cameraChinh.node.active = false;
+        }
     }
 
-    private datGocNhinQuanDo() {
-        if (!this.cameraChinh) return;
+    private taoGiaoDien2D() {
+        const kichThuocManHinh = view.getVisibleSize();
 
-        this.cameraChinh.node.setPosition(new Vec3(0, 15, -15));
-        this.cameraChinh.node.lookAt(new Vec3(0, 0, 0));
-    }
-
-    private taoCanvasUI() {
-        this.nodeCanvas = new Node('CanvasQuanCo');
+        this.nodeCanvas = new Node('CanvasCoTuong2D');
         this.nodeCanvas.layer = Layers.Enum.UI_2D;
+        this.node.scene?.addChild(this.nodeCanvas);
 
-        const nodeCameraCanvas = new Node('CameraCanvasQuanCo');
+        const transformCanvas = this.nodeCanvas.addComponent(UITransform);
+        transformCanvas.setContentSize(kichThuocManHinh.width, kichThuocManHinh.height);
+        this.nodeCanvas.setPosition(new Vec3(kichThuocManHinh.width / 2, kichThuocManHinh.height / 2, 0));
+
+        const nodeCameraCanvas = new Node('CameraCoTuong2D');
         nodeCameraCanvas.layer = Layers.Enum.UI_2D;
         this.nodeCanvas.addChild(nodeCameraCanvas);
 
         this.cameraCanvas = nodeCameraCanvas.addComponent(Camera);
         this.cameraCanvas.projection = Camera.ProjectionType.ORTHO;
         this.cameraCanvas.visibility = Layers.Enum.UI_2D;
-        this.cameraCanvas.clearFlags = Camera.ClearFlag.DEPTH_ONLY;
-        this.cameraCanvas.priority = (this.cameraChinh?.priority ?? 0) + 1;
-
-        const kichThuocManHinh = view.getVisibleSize();
-        const bienDangCanvas = this.nodeCanvas.addComponent(UITransform);
-        bienDangCanvas.setContentSize(kichThuocManHinh.width, kichThuocManHinh.height);
+        this.cameraCanvas.clearFlags = Camera.ClearFlag.SOLID_COLOR;
+        this.cameraCanvas.clearColor = new Color(32, 36, 42, 255);
+        this.cameraCanvas.priority = 1;
 
         const canvas = this.nodeCanvas.addComponent(Canvas);
         canvas.cameraComponent = this.cameraCanvas;
         canvas.alignCanvasWithScreen = true;
-        this.nodeCanvas.setPosition(new Vec3(kichThuocManHinh.width / 2, kichThuocManHinh.height / 2, 0));
-        this.node.scene?.addChild(this.nodeCanvas);
+
+        this.taoNodeTrangThai(kichThuocManHinh.height);
+        this.taoNodeBanCo(kichThuocManHinh);
     }
 
-    private capNhatViTriLabelQuanCo() {
-        if (!this.cameraChinh || !this.nodeCanvas) return;
+    private taoNodeTrangThai(chieuCaoManHinh: number) {
+        const nodeTrangThai = new Node('TrangThaiVanCo2D');
+        nodeTrangThai.layer = Layers.Enum.UI_2D;
+        nodeTrangThai.setPosition(new Vec3(0, chieuCaoManHinh / 2 - 34, 0));
+        this.nodeCanvas!.addChild(nodeTrangThai);
 
-        for (const quanCo of this.danhSachQuanCo) {
-            if (!quanCo.node || !quanCo.node.isValid) continue;
+        const transform = nodeTrangThai.addComponent(UITransform);
+        transform.setContentSize(1180, 72);
 
-            let label = this.cacLabelQuanCo.get(quanCo);
-            if (!label) {
-                label = this.taoLabelChoQuan(quanCo);
-                this.cacLabelQuanCo.set(quanCo, label);
+        this.nhanTrangThai = nodeTrangThai.addComponent(Label);
+        this.nhanTrangThai.fontSize = 26;
+        this.nhanTrangThai.lineHeight = 30;
+        this.nhanTrangThai.horizontalAlign = HorizontalTextAlignment.CENTER;
+        this.nhanTrangThai.verticalAlign = VerticalTextAlignment.CENTER;
+        this.nhanTrangThai.overflow = Overflow.SHRINK;
+        this.nhanTrangThai.enableWrapText = false;
+        this.nhanTrangThai.color = new Color(245, 236, 210, 255);
+        this.nhanTrangThai.isBold = true;
+    }
+
+    private taoNodeBanCo(kichThuocManHinh: { width: number, height: number }) {
+        const rongBanCo = this.chieuRongBanCo();
+        const caoBanCo = this.chieuCaoBanCo();
+        const tyLe = Math.min(
+            (kichThuocManHinh.width * 0.98) / rongBanCo,
+            (kichThuocManHinh.height * 0.94) / caoBanCo
+        );
+
+        this.nodeBanCo2D = new Node('BanCo2D');
+        this.nodeBanCo2D.layer = Layers.Enum.UI_2D;
+        this.nodeBanCo2D.setScale(new Vec3(tyLe * this.tiLePhongNgangBanCo, tyLe, 1));
+        this.nodeBanCo2D.setPosition(new Vec3(0, -8, 0));
+        this.nodeCanvas!.addChild(this.nodeBanCo2D);
+
+        const transformBanCo = this.nodeBanCo2D.addComponent(UITransform);
+        transformBanCo.setContentSize(rongBanCo, caoBanCo);
+
+        this.veBanCo2D = this.nodeBanCo2D.addComponent(Graphics);
+
+        if (this.dungAnhBanCo) {
+            this.taoAnhNenBanCo(rongBanCo, caoBanCo);
+        }
+
+        const nodeHighlight = new Node('Highlight2D');
+        nodeHighlight.layer = Layers.Enum.UI_2D;
+        this.nodeBanCo2D.addChild(nodeHighlight);
+        nodeHighlight.addComponent(UITransform).setContentSize(rongBanCo, caoBanCo);
+        this.veHighlight2D = nodeHighlight.addComponent(Graphics);
+
+        this.nodeQuanCo2D = new Node('QuanCo2D');
+        this.nodeQuanCo2D.layer = Layers.Enum.UI_2D;
+        this.nodeBanCo2D.addChild(this.nodeQuanCo2D);
+        this.nodeQuanCo2D.addComponent(UITransform).setContentSize(rongBanCo, caoBanCo);
+    }
+
+    private taoAnhNenBanCo(rongBanCo: number, caoBanCo: number) {
+        const nodeAnh = new Node('AnhNenBanCo');
+        nodeAnh.layer = Layers.Enum.UI_2D;
+        this.nodeBanCo2D!.addChild(nodeAnh);
+
+        const transformAnh = nodeAnh.addComponent(UITransform);
+        transformAnh.setContentSize(rongBanCo, caoBanCo);
+
+        const sprite = nodeAnh.addComponent(Sprite);
+        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+
+        resources.load('board/texture', Texture2D, (loi, texture) => {
+            if (loi || !texture) {
+                console.error('Khong load duoc anh ban co:', loi);
+                return;
             }
 
-            const viTriTheGioi = quanCo.node.worldPosition.clone();
-            viTriTheGioi.y += 0.6;
-
-            const viTriManHinh = this.cameraChinh.convertToUINode(viTriTheGioi, this.nodeCanvas);
-            if (viTriManHinh) {
-                label.node.setPosition(viTriManHinh);
-            }
-        }
-    }
-
-    private taoLabelChoQuan(quanCo: QuanCo): Label {
-        const nodeLabel = new Node('LabelQuanCo');
-        nodeLabel.layer = Layers.Enum.UI_2D;
-        this.nodeCanvas!.addChild(nodeLabel);
-
-        const bienDang = nodeLabel.addComponent(UITransform);
-        bienDang.setContentSize(120, 60);
-
-        const label = nodeLabel.addComponent(Label);
-        label.fontSize = 32;
-        label.lineHeight = 36;
-        label.horizontalAlign = HorizontalTextAlignment.CENTER;
-        label.verticalAlign = VerticalTextAlignment.CENTER;
-        label.overflow = Overflow.SHRINK;
-        label.enableWrapText = false;
-        label.isBold = true;
-        label.color = new Color(255, 255, 255, 255);
-        label.outlineColor = new Color(0, 0, 0, 255);
-        label.outlineWidth = 2;
-
-        label.string = this.layTenQuanCoLabel(quanCo);
-
-        return label;
-    }
-
-    private layTenQuanCoLabel(quanCo: QuanCo): string {
-        switch (quanCo.loaiQuan) {
-            case LoaiQuan.TUONG_SOAI:
-                return quanCo.laQuanDo ? 'TƯỚNG' : 'SOÁI';
-            case LoaiQuan.SI:
-                return 'SĨ';
-            case LoaiQuan.TUONG_VOI:
-                return 'TƯỢNG';
-            case LoaiQuan.XE:
-                return 'XE';
-            case LoaiQuan.MA:
-                return 'MÃ';
-            case LoaiQuan.PHAO:
-                return 'PHÁO';
-            case LoaiQuan.TOT:
-                return quanCo.laQuanDo ? 'TỐT' : 'BINH';
-            default:
-                return '?';
-        }
+            const spriteFrame = new SpriteFrame();
+            spriteFrame.texture = texture;
+            sprite.spriteFrame = spriteFrame;
+        });
     }
 
     private taoBanCo() {
-        this.danhSachOCo = [];
         this.banCoQuan = [];
 
         for (let hang = 0; hang < this.soHang; hang++) {
-            this.danhSachOCo[hang] = [];
             this.banCoQuan[hang] = [];
 
             for (let cot = 0; cot < this.soCot; cot++) {
                 this.banCoQuan[hang][cot] = null;
-
-                if (!this.prefabOCo) return;
-
-                const nodeOCo = instantiate(this.prefabOCo);
-
-                nodeOCo.setPosition(new Vec3(
-                    cot * this.khoangCachO - 4.8,
-                    0.03,
-                    hang * this.khoangCachO - 5.4
-                ));
-
-                const oCo = nodeOCo.getComponent(OCo);
-                oCo?.khoiTao(hang, cot);
-
-                this.node.addChild(nodeOCo);
-
-                if (oCo) {
-                    this.danhSachOCo[hang][cot] = oCo;
-                }
             }
         }
     }
 
     private taoCacQuanCoBanDau() {
-        if (!this.prefabQuanCo) {
-            console.log('Chua gan prefabQuanCo');
-            return;
-        }
-
         const cacQuanCo: CauHinhQuanCo[] = [
             { hang: 0, cot: 0, loaiQuan: LoaiQuan.XE, laQuanDo: true },
             { hang: 0, cot: 1, loaiQuan: LoaiQuan.MA, laQuanDo: true },
@@ -340,44 +298,48 @@ export class QuanLyBanCo extends Component {
     }
 
     private taoMotQuanCo(cauHinh: CauHinhQuanCo) {
-        if (!this.prefabQuanCo) return;
+        const nodeQuan = new Node(this.layTenQuanCoNgan(cauHinh.loaiQuan, cauHinh.laQuanDo));
+        nodeQuan.layer = Layers.Enum.UI_2D;
+        this.nodeQuanCo2D!.addChild(nodeQuan);
 
-        const oCo = this.layOCo(cauHinh.hang, cauHinh.cot);
+        const transform = nodeQuan.addComponent(UITransform);
+        transform.setContentSize(this.canhOCo * 1.25, this.canhOCo * 1.25);
 
-        if (!oCo) return;
+        nodeQuan.addComponent(Graphics);
 
-        const nodeQuanCo = instantiate(this.prefabQuanCo);
-        const quanCo = nodeQuanCo.getComponent(QuanCo);
+        const nodeChu = new Node('TenQuan');
+        nodeChu.layer = Layers.Enum.UI_2D;
+        nodeQuan.addChild(nodeChu);
+        nodeChu.addComponent(UITransform).setContentSize(this.canhOCo * 1.18, this.canhOCo * 1.18);
 
-        this.node.addChild(nodeQuanCo);
-        nodeQuanCo.setWorldPosition(this.layViTriQuanCo(oCo));
+        const label = nodeChu.addComponent(Label);
+        label.string = this.layTenQuanCoNgan(cauHinh.loaiQuan, cauHinh.laQuanDo);
+        label.fontSize = cauHinh.loaiQuan === LoaiQuan.TUONG_SOAI ? 38 : 42;
+        label.lineHeight = 46;
+        label.horizontalAlign = HorizontalTextAlignment.CENTER;
+        label.verticalAlign = VerticalTextAlignment.CENTER;
+        label.overflow = Overflow.SHRINK;
+        label.enableWrapText = false;
+        label.isBold = true;
 
-        if (quanCo) {
-            quanCo.khoiTao(cauHinh.hang, cauHinh.cot, cauHinh.loaiQuan, cauHinh.laQuanDo);
-            this.banCoQuan[cauHinh.hang][cauHinh.cot] = quanCo;
-            this.danhSachQuanCo.push(quanCo);
-        }
+        const quanCo = nodeQuan.addComponent(QuanCo);
+        quanCo.khoiTao(cauHinh.hang, cauHinh.cot, cauHinh.loaiQuan, cauHinh.laQuanDo);
+
+        this.banCoQuan[cauHinh.hang][cauHinh.cot] = quanCo;
+        this.danhSachQuanCo.push(quanCo);
+        this.cacNodeQuanCo.set(quanCo, nodeQuan);
+        this.capNhatHienThiQuanCo(quanCo);
     }
 
     private khiBamChuot(suKien: EventMouse) {
         if (this.vanDaKetThuc) return;
         if (this.laLuotCuaMay()) return;
 
-        if (!this.cameraChinh) {
-            console.log('Chua gan cameraChinh');
-            return;
-        }
+        const viTriChuot = suKien.getLocation();
+        const viTri = this.layViTriBanCoTuManHinh(viTriChuot.x, viTriChuot.y);
+        if (!viTri) return;
 
-        const tiaBam = new geometry.Ray();
-        this.cameraChinh.screenPointToRay(
-            suKien.getLocationX(),
-            suKien.getLocationY(),
-            tiaBam
-        );
-
-        if (!PhysicsSystem.instance.raycast(tiaBam)) return;
-
-        const { quanCo, oCo } = this.layDoiTuongDuocBam();
+        const quanCo = this.banCoQuan[viTri.hang][viTri.cot];
 
         if (quanCo) {
             if (this.coTheAnQuanDangBam(quanCo)) {
@@ -389,9 +351,7 @@ export class QuanLyBanCo extends Component {
             return;
         }
 
-        if (oCo) {
-            this.thuDiChuyenQuanDangChon(oCo);
-        }
+        this.thuDiChuyenQuanDangChon(viTri);
     }
 
     private khiBamPhim(suKien: EventKeyboard) {
@@ -406,25 +366,24 @@ export class QuanLyBanCo extends Component {
             return;
         }
 
-        this.xoaODangChon();
         this.xoaHighlightNuocDi();
 
         if (this.quanDangChon && this.quanDangChon !== quanCo) {
-            this.quanDangChon.boChon();
+            this.capNhatHienThiQuanCo(this.quanDangChon);
         }
 
         this.quanDangChon = quanCo;
-        this.quanDangChon.chon();
         console.log(`Da chon ${this.layTenQuanCo(quanCo)} tai hang=${quanCo.hang}, cot=${quanCo.cot}`);
 
         this.hienCacNuocDiHopLe(quanCo);
+        this.veLaiBanCo();
     }
 
-    private thuDiChuyenQuanDangChon(oCo: OCo) {
+    private thuDiChuyenQuanDangChon(viTri: ViTriBanCo) {
         if (!this.quanDangChon) return;
-        if (!this.laONuocDiHopLe(oCo)) return;
+        if (!this.laONuocDiHopLe(viTri)) return;
 
-        this.diChuyenQuanDangChonDen(oCo);
+        this.diChuyenQuanDangChonDen(viTri);
     }
 
     private coTheAnQuanDangBam(quanBiAn: QuanCo): boolean {
@@ -432,50 +391,39 @@ export class QuanLyBanCo extends Component {
         if (this.quanDangChon === quanBiAn) return false;
         if (this.quanDangChon.laQuanDo === quanBiAn.laQuanDo) return false;
 
-        const oCoBiAn = this.layOCo(quanBiAn.hang, quanBiAn.cot);
-
-        return !!oCoBiAn && this.laONuocDiHopLe(oCoBiAn);
+        return this.laONuocDiHopLe({ hang: quanBiAn.hang, cot: quanBiAn.cot });
     }
 
     private anQuanVaDiChuyen(quanBiAn: QuanCo) {
-        const oCoBiAn = this.layOCo(quanBiAn.hang, quanBiAn.cot);
-
-        if (!oCoBiAn) return;
-
         console.log(`${this.layTenQuanCo(this.quanDangChon!)} an ${this.layTenQuanCo(quanBiAn)}`);
-        this.xoaLabelQuanCo(quanBiAn);
-        quanBiAn.node.destroy();
-        this.diChuyenQuanDangChonDen(oCoBiAn);
+        this.xoaQuanCo(quanBiAn);
+        this.diChuyenQuanDangChonDen({ hang: quanBiAn.hang, cot: quanBiAn.cot });
     }
 
-    private diChuyenQuanDangChonDen(oCo: OCo) {
+    private diChuyenQuanDangChonDen(viTri: ViTriBanCo) {
         if (!this.quanDangChon) return;
 
         const quanCo = this.quanDangChon;
 
         this.banCoQuan[quanCo.hang][quanCo.cot] = null;
-        this.banCoQuan[oCo.hang][oCo.cot] = quanCo;
+        this.banCoQuan[viTri.hang][viTri.cot] = quanCo;
 
-        quanCo.diChuyenDen(oCo.hang, oCo.cot, this.layViTriQuanCo(oCo));
-        quanCo.boChon();
+        quanCo.hang = viTri.hang;
+        quanCo.cot = viTri.cot;
+        this.capNhatHienThiQuanCo(quanCo);
 
         this.quanDangChon = null;
         this.xoaHighlightNuocDi();
-        this.chonOCo(oCo);
+        this.hangOCoDangChon = viTri.hang;
+        this.cotOCoDangChon = viTri.cot;
+        this.veLaiBanCo();
         this.doiLuotSauKhiDi();
     }
 
     private hienCacNuocDiHopLe(quanCo: QuanCo) {
-        const cacNuocDi = KiemTraNuocDi.layNuocDiHopLeAnToan(quanCo, this.banCoQuan);
-
-        for (const nuocDi of cacNuocDi) {
-            const oCo = this.layOCo(nuocDi.hang, nuocDi.cot);
-
-            if (oCo) {
-                oCo.hienNuocDiHopLe();
-                this.cacONuocDiHopLe.push(oCo);
-            }
-        }
+        this.cacONuocDiHopLe = KiemTraNuocDi.layNuocDiHopLeAnToan(quanCo, this.banCoQuan);
+        this.hangOCoDangChon = quanCo.hang;
+        this.cotOCoDangChon = quanCo.cot;
     }
 
     private doiLuotSauKhiDi() {
@@ -508,32 +456,23 @@ export class QuanLyBanCo extends Component {
 
     private datLaiVanCo() {
         this.xoaHighlightNuocDi();
-        this.xoaODangChon();
-
-        if (this.quanDangChon) {
-            this.quanDangChon.boChon();
-            this.quanDangChon = null;
-        }
+        this.quanDangChon = null;
+        this.hangOCoDangChon = null;
+        this.cotOCoDangChon = null;
 
         for (const quanCo of this.danhSachQuanCo) {
-            if (quanCo.node && quanCo.node.isValid) {
-                quanCo.node.destroy();
-            }
+            this.xoaQuanCo(quanCo);
         }
 
         this.danhSachQuanCo = [];
-        this.xoaTatCaLabelQuanCo();
-
-        for (let hang = 0; hang < this.soHang; hang++) {
-            for (let cot = 0; cot < this.soCot; cot++) {
-                this.banCoQuan[hang][cot] = null;
-            }
-        }
+        this.cacNodeQuanCo.clear();
+        this.taoBanCo();
 
         this.luotQuanDo = true;
         this.vanDaKetThuc = false;
         this.mayDangDi = false;
         this.taoCacQuanCoBanDau();
+        this.veLaiBanCo();
         this.capNhatTrangThai('Da reset van co');
         this.inLuotHienTai();
     }
@@ -542,32 +481,11 @@ export class QuanLyBanCo extends Component {
         this.capNhatTrangThai(`Luot ${this.layTenPhe(this.luotQuanDo)}`);
     }
 
-    private taoGiaoDienTrangThai() {
-        const nodeTrangThai = new Node('TrangThaiVanCo');
-        nodeTrangThai.setPosition(new Vec3(0, 0.2, 6.6));
-        nodeTrangThai.setRotationFromEuler(-60, 0, 0);
-        nodeTrangThai.setScale(new Vec3(0.012, 0.012, 0.012));
-        this.node.addChild(nodeTrangThai);
-
-        const bienDang = nodeTrangThai.addComponent(UITransform);
-        bienDang.setContentSize(900, 90);
-
-        this.nhanTrangThai = nodeTrangThai.addComponent(Label);
-        this.nhanTrangThai.fontSize = 42;
-        this.nhanTrangThai.lineHeight = 48;
-        this.nhanTrangThai.horizontalAlign = HorizontalTextAlignment.CENTER;
-        this.nhanTrangThai.verticalAlign = VerticalTextAlignment.CENTER;
-        this.nhanTrangThai.color = new Color(255, 245, 180, 255);
-        this.nhanTrangThai.isBold = true;
-        this.nhanTrangThai.outlineColor = new Color(0, 0, 0, 255);
-        this.nhanTrangThai.outlineWidth = 3;
-    }
-
     private capNhatTrangThai(noiDung: string) {
         console.log(noiDung);
 
         if (this.nhanTrangThai) {
-            this.nhanTrangThai.string = `${noiDung}\nNhan R de choi lai`;
+            this.nhanTrangThai.string = `${noiDung} | R: choi lai`;
         }
     }
 
@@ -600,26 +518,22 @@ export class QuanLyBanCo extends Component {
             return;
         }
 
-        const oCo = this.layOCo(nuocDi.hang, nuocDi.cot);
-
-        if (!oCo) {
-            this.mayDangDi = false;
-            return;
-        }
-
         if (nuocDi.quanBiAn) {
             console.log(`${this.layTenQuanCo(nuocDi.quanCo)} an ${this.layTenQuanCo(nuocDi.quanBiAn)}`);
-            this.xoaLabelQuanCo(nuocDi.quanBiAn);
-            nuocDi.quanBiAn.node.destroy();
+            this.xoaQuanCo(nuocDi.quanBiAn);
         }
 
         this.banCoQuan[nuocDi.quanCo.hang][nuocDi.quanCo.cot] = null;
         this.banCoQuan[nuocDi.hang][nuocDi.cot] = nuocDi.quanCo;
-        nuocDi.quanCo.diChuyenDen(nuocDi.hang, nuocDi.cot, this.layViTriQuanCo(oCo));
+        nuocDi.quanCo.hang = nuocDi.hang;
+        nuocDi.quanCo.cot = nuocDi.cot;
+        this.capNhatHienThiQuanCo(nuocDi.quanCo);
 
         this.xoaHighlightNuocDi();
-        this.chonOCo(oCo);
+        this.hangOCoDangChon = nuocDi.hang;
+        this.cotOCoDangChon = nuocDi.cot;
         this.mayDangDi = false;
+        this.veLaiBanCo();
         this.doiLuotSauKhiDi();
     }
 
@@ -653,79 +567,233 @@ export class QuanLyBanCo extends Component {
         return danhSachUuTien[Math.floor(Math.random() * danhSachUuTien.length)];
     }
 
-    private xoaHighlightNuocDi() {
-        for (const oCo of this.cacONuocDiHopLe) {
-            oCo.datLaiMau();
-        }
+    private veLaiBanCo() {
+        this.veKhungBanCo();
+        this.veHighlight();
 
-        this.cacONuocDiHopLe = [];
+        for (const quanCo of this.danhSachQuanCo) {
+            if (quanCo.node && quanCo.node.isValid) {
+                this.capNhatHienThiQuanCo(quanCo);
+            }
+        }
     }
 
-    private xoaLabelQuanCo(quanCo: QuanCo) {
-        const label = this.cacLabelQuanCo.get(quanCo);
+    private veKhungBanCo() {
+        if (!this.veBanCo2D) return;
+
+        const g = this.veBanCo2D;
+        const trai = this.xCot(0);
+        const phai = this.xCot(this.soCot - 1);
+        const duoi = this.yHang(0);
+        const tren = this.yHang(this.soHang - 1);
+
+        g.clear();
+        g.fillColor = new Color(222, 176, 104, 255);
+        g.roundRect(-this.chieuRongBanCo() / 2, -this.chieuCaoBanCo() / 2, this.chieuRongBanCo(), this.chieuCaoBanCo(), 12);
+        g.fill();
+
+        if (this.dungAnhBanCo) {
+            return;
+        }
+
+        g.strokeColor = new Color(88, 55, 28, 255);
+        g.lineWidth = 3;
+
+        for (let cot = 0; cot < this.soCot; cot++) {
+            const x = this.xCot(cot);
+            g.moveTo(x, duoi);
+            g.lineTo(x, tren);
+        }
+
+        for (let hang = 0; hang < this.soHang; hang++) {
+            const y = this.yHang(hang);
+            g.moveTo(trai, y);
+            g.lineTo(phai, y);
+        }
+
+        this.veDuongCheoCung(g, true);
+        this.veDuongCheoCung(g, false);
+        g.stroke();
+
+        this.veChuSong('楚河', -this.canhOCo * 1.65);
+        this.veChuSong('漢界', this.canhOCo * 1.65);
+    }
+
+    private veDuongCheoCung(g: Graphics, laQuanDo: boolean) {
+        const hangDau = laQuanDo ? 0 : 7;
+        const hangCuoi = laQuanDo ? 2 : 9;
+        const trai = this.xCot(3);
+        const phai = this.xCot(5);
+        const duoi = this.yHang(hangDau);
+        const tren = this.yHang(hangCuoi);
+
+        g.moveTo(trai, duoi);
+        g.lineTo(phai, tren);
+        g.moveTo(phai, duoi);
+        g.lineTo(trai, tren);
+    }
+
+    private veChuSong(noiDung: string, x: number) {
+        const nodeCu = this.nodeBanCo2D?.getChildByName(`Song-${noiDung}`);
+        if (nodeCu) return;
+
+        const nodeChu = new Node(`Song-${noiDung}`);
+        nodeChu.layer = Layers.Enum.UI_2D;
+        nodeChu.setPosition(new Vec3(x, (this.yHang(4) + this.yHang(5)) / 2, 0));
+        this.nodeBanCo2D!.addChild(nodeChu);
+        nodeChu.addComponent(UITransform).setContentSize(150, 44);
+
+        const label = nodeChu.addComponent(Label);
+        label.string = noiDung;
+        label.fontSize = 30;
+        label.lineHeight = 34;
+        label.horizontalAlign = HorizontalTextAlignment.CENTER;
+        label.verticalAlign = VerticalTextAlignment.CENTER;
+        label.color = new Color(112, 67, 30, 190);
+        label.isBold = true;
+    }
+
+    private veHighlight() {
+        if (!this.veHighlight2D) return;
+
+        const g = this.veHighlight2D;
+        g.clear();
+
+        if (this.hangOCoDangChon !== null && this.cotOCoDangChon !== null) {
+            this.veVongTronHighlight(g, this.hangOCoDangChon, this.cotOCoDangChon, new Color(255, 206, 72, 190), this.canhOCo * 0.42);
+        }
+
+        for (const nuocDi of this.cacONuocDiHopLe) {
+            const coQuan = !!this.banCoQuan[nuocDi.hang][nuocDi.cot];
+            this.veVongTronHighlight(
+                g,
+                nuocDi.hang,
+                nuocDi.cot,
+                coQuan ? new Color(222, 64, 64, 190) : new Color(70, 170, 104, 170),
+                coQuan ? this.canhOCo * 0.38 : this.canhOCo * 0.17
+            );
+        }
+    }
+
+    private veVongTronHighlight(g: Graphics, hang: number, cot: number, mau: Color, banKinh: number) {
+        g.fillColor = mau;
+        g.circle(this.xCot(cot), this.yHang(hang), banKinh);
+        g.fill();
+    }
+
+    private capNhatHienThiQuanCo(quanCo: QuanCo) {
+        const nodeQuan = this.cacNodeQuanCo.get(quanCo);
+        if (!nodeQuan || !nodeQuan.isValid) return;
+
+        nodeQuan.setPosition(this.layViTriQuanCo2D(quanCo.hang, quanCo.cot));
+
+        const graphics = nodeQuan.getComponent(Graphics);
+        const label = nodeQuan.getComponentInChildren(Label);
+        const dangChon = this.quanDangChon === quanCo;
+
+        if (graphics) {
+            graphics.clear();
+            graphics.fillColor = quanCo.laQuanDo
+                ? new Color(248, 232, 207, 255)
+                : new Color(238, 227, 210, 255);
+            graphics.strokeColor = dangChon
+                ? new Color(255, 208, 62, 255)
+                : (quanCo.laQuanDo ? new Color(170, 38, 32, 255) : new Color(36, 36, 36, 255));
+            graphics.lineWidth = dangChon ? 5 : 3;
+            graphics.circle(0, 0, this.canhOCo * 0.36);
+            graphics.fill();
+            graphics.stroke();
+        }
 
         if (label) {
-            label.node.destroy();
-            this.cacLabelQuanCo.delete(quanCo);
+            label.color = quanCo.laQuanDo ? new Color(187, 30, 28, 255) : new Color(24, 24, 24, 255);
         }
     }
 
-    private xoaTatCaLabelQuanCo() {
-        for (const label of this.cacLabelQuanCo.values()) {
-            if (label.node && label.node.isValid) {
-                label.node.destroy();
-            }
+    private xoaQuanCo(quanCo: QuanCo) {
+        const nodeQuan = this.cacNodeQuanCo.get(quanCo);
+
+        if (nodeQuan && nodeQuan.isValid) {
+            nodeQuan.destroy();
         }
 
-        this.cacLabelQuanCo.clear();
+        this.cacNodeQuanCo.delete(quanCo);
+        this.banCoQuan[quanCo.hang][quanCo.cot] = null;
     }
 
-    private chonOCo(oCo: OCo) {
-        this.xoaODangChon();
-        this.oDangChon = oCo;
-        this.oDangChon.chon();
+    private xoaHighlightNuocDi() {
+        this.cacONuocDiHopLe = [];
+        this.hangOCoDangChon = null;
+        this.cotOCoDangChon = null;
     }
 
-    private xoaODangChon() {
-        if (this.oDangChon) {
-            this.oDangChon.datLaiMau();
-            this.oDangChon = null;
+    private laONuocDiHopLe(viTri: ViTriBanCo): boolean {
+        return this.cacONuocDiHopLe.some((nuocDi) => {
+            return nuocDi.hang === viTri.hang && nuocDi.cot === viTri.cot;
+        });
+    }
+
+    private layViTriBanCoTuManHinh(xManHinh: number, yManHinh: number): ViTriBanCo | null {
+        if (!this.cameraCanvas || !this.nodeBanCo2D) return null;
+
+        const transformBanCo = this.nodeBanCo2D.getComponent(UITransform);
+        if (!transformBanCo) return null;
+
+        const viTriTheGioi = this.cameraCanvas.screenToWorld(new Vec3(xManHinh, yManHinh, 0));
+        const viTriTrongBanCo = transformBanCo.convertToNodeSpaceAR(viTriTheGioi);
+        const x = viTriTrongBanCo.x;
+        const y = viTriTrongBanCo.y;
+        const cot = Math.round((x - this.xCot(0)) / this.canhOCo);
+        const hang = Math.round((y - this.yHang(0)) / this.canhOCo);
+
+        if (hang < 0 || hang >= this.soHang || cot < 0 || cot >= this.soCot) return null;
+
+        const khoangCachX = Math.abs(x - this.xCot(cot));
+        const khoangCachY = Math.abs(y - this.yHang(hang));
+        if (khoangCachX > this.canhOCo * 0.45 || khoangCachY > this.canhOCo * 0.45) return null;
+
+        return { hang, cot };
+    }
+
+    private layViTriQuanCo2D(hang: number, cot: number): Vec3 {
+        return new Vec3(this.xCot(cot), this.yHang(hang), 0);
+    }
+
+    private xCot(cot: number): number {
+        return -this.chieuRongBanCo() / 2 + this.leBanCo + cot * this.canhOCo;
+    }
+
+    private yHang(hang: number): number {
+        return -this.chieuCaoBanCo() / 2 + this.leBanCo + hang * this.canhOCo;
+    }
+
+    private chieuRongBanCo(): number {
+        return this.canhOCo * (this.soCot - 1) + this.leBanCo * 2;
+    }
+
+    private chieuCaoBanCo(): number {
+        return this.canhOCo * (this.soHang - 1) + this.leBanCo * 2;
+    }
+
+    private layTenQuanCoNgan(loaiQuan: LoaiQuan, laQuanDo: boolean): string {
+        switch (loaiQuan) {
+            case LoaiQuan.TUONG_SOAI:
+                return laQuanDo ? '帥' : '將';
+            case LoaiQuan.SI:
+                return laQuanDo ? '仕' : '士';
+            case LoaiQuan.TUONG_VOI:
+                return laQuanDo ? '相' : '象';
+            case LoaiQuan.XE:
+                return '車';
+            case LoaiQuan.MA:
+                return '馬';
+            case LoaiQuan.PHAO:
+                return laQuanDo ? '炮' : '砲';
+            case LoaiQuan.TOT:
+                return laQuanDo ? '兵' : '卒';
+            default:
+                return '?';
         }
-    }
-
-    private laONuocDiHopLe(oCo: OCo): boolean {
-        return this.cacONuocDiHopLe.indexOf(oCo) !== -1;
-    }
-
-    private layDoiTuongDuocBam(): { quanCo: QuanCo | null, oCo: OCo | null } {
-        let quanCo: QuanCo | null = null;
-        let oCo: OCo | null = null;
-
-        for (const ketQua of PhysicsSystem.instance.raycastResults) {
-            const node = ketQua.collider.node;
-
-            if (!quanCo) {
-                quanCo = node.getComponent(QuanCo);
-            }
-
-            if (!oCo) {
-                oCo = node.getComponent(OCo);
-            }
-
-            if (quanCo && oCo) break;
-        }
-
-        return { quanCo, oCo };
-    }
-
-    private layOCo(hang: number, cot: number): OCo | null {
-        return this.danhSachOCo[hang]?.[cot] ?? null;
-    }
-
-    private layViTriQuanCo(oCo: OCo): Vec3 {
-        const viTri = oCo.node.worldPosition.clone();
-        viTri.y += this.doCaoQuanCo;
-        return viTri;
     }
 
     private layTenQuanCo(quanCo: QuanCo): string {

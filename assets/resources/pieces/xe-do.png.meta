@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "0df9f865-46c1-4c56-a001-321b6568ed69",
+  "uuid": "9e82214f-eaab-4afe-9c0b-c3d79227ab62",
   "files": [
     ".json",
     ".png"
@@ -10,8 +10,8 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "0df9f865-46c1-4c56-a001-321b6568ed69@6c48a",
-      "displayName": "board",
+      "uuid": "9e82214f-eaab-4afe-9c0b-c3d79227ab62@6c48a",
+      "displayName": "xe-do",
       "id": "6c48a",
       "name": "texture",
       "userData": {
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "0df9f865-46c1-4c56-a001-321b6568ed69",
+        "imageUuidOrDatabaseUri": "9e82214f-eaab-4afe-9c0b-c3d79227ab62",
         "visible": false
       },
       "ver": "1.0.22",
@@ -36,8 +36,7 @@
   "userData": {
     "type": "texture",
     "fixAlphaTransparencyArtifacts": false,
-    "hasAlpha": false,
-    "redirect": "0df9f865-46c1-4c56-a001-321b6568ed69@6c48a",
-    "flipVertical": true
+    "hasAlpha": true,
+    "redirect": "9e82214f-eaab-4afe-9c0b-c3d79227ab62@6c48a"
   }
 }

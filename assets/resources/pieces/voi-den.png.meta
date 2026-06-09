@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "0df9f865-46c1-4c56-a001-321b6568ed69",
+  "uuid": "0bd6051f-2e1a-4e81-b288-3f74a74ed1ba",
   "files": [
     ".json",
     ".png"
@@ -10,8 +10,8 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "0df9f865-46c1-4c56-a001-321b6568ed69@6c48a",
-      "displayName": "board",
+      "uuid": "0bd6051f-2e1a-4e81-b288-3f74a74ed1ba@6c48a",
+      "displayName": "voi-den",
       "id": "6c48a",
       "name": "texture",
       "userData": {
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "0df9f865-46c1-4c56-a001-321b6568ed69",
+        "imageUuidOrDatabaseUri": "0bd6051f-2e1a-4e81-b288-3f74a74ed1ba",
         "visible": false
       },
       "ver": "1.0.22",
@@ -36,8 +36,7 @@
   "userData": {
     "type": "texture",
     "fixAlphaTransparencyArtifacts": false,
-    "hasAlpha": false,
-    "redirect": "0df9f865-46c1-4c56-a001-321b6568ed69@6c48a",
-    "flipVertical": true
+    "hasAlpha": true,
+    "redirect": "0bd6051f-2e1a-4e81-b288-3f74a74ed1ba@6c48a"
   }
 }

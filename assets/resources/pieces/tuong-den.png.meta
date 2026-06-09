@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "0df9f865-46c1-4c56-a001-321b6568ed69",
+  "uuid": "51afd156-965d-41ca-aa98-6c3cf27449e6",
   "files": [
     ".json",
     ".png"
@@ -10,8 +10,8 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "0df9f865-46c1-4c56-a001-321b6568ed69@6c48a",
-      "displayName": "board",
+      "uuid": "51afd156-965d-41ca-aa98-6c3cf27449e6@6c48a",
+      "displayName": "tuong-den",
       "id": "6c48a",
       "name": "texture",
       "userData": {
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "0df9f865-46c1-4c56-a001-321b6568ed69",
+        "imageUuidOrDatabaseUri": "51afd156-965d-41ca-aa98-6c3cf27449e6",
         "visible": false
       },
       "ver": "1.0.22",
@@ -36,8 +36,7 @@
   "userData": {
     "type": "texture",
     "fixAlphaTransparencyArtifacts": false,
-    "hasAlpha": false,
-    "redirect": "0df9f865-46c1-4c56-a001-321b6568ed69@6c48a",
-    "flipVertical": true
+    "hasAlpha": true,
+    "redirect": "51afd156-965d-41ca-aa98-6c3cf27449e6@6c48a"
   }
 }
